@@ -1,36 +1,75 @@
 import csv
-reader = csv.reader(open("training.csv"))
-input_size = 20
+import matplotlib.pyplot as plt
+import numpy as np
 
-par = []
-
-# par == training.csv
-for row in reader:
-	# unpack string row
-	par.append([float(x) for x in row[:input_size+1]])
-
-# building model, y = a1x1 + a2x2 ..... + b*1
-lr = 0.00001 #learning rate
-weight = [1 for x in range(input_size+1)]
+input_size = 50
+lr = 0.00001  # learning rate
 epoch = 1000
-# start training
+
+
+def load_dataset(path):
+    data = []
+    with open(path, "r", newline="") as f:
+        reader = csv.reader(f)
+        for row in reader:
+            data.append([float(x) for x in row[: input_size + 1]])
+    return data
+
+
+def evaluate(weight, dataset):
+    total_err = 0.0
+    for row in dataset:
+        output = sum(weight[j] * row[j] for j in range(input_size)) + weight[input_size]
+        err = row[input_size] - output
+        total_err += err**2
+    return total_err / len(dataset)
+
+
+def save_model(weight, path="model.csv"):
+    with open(path, "w", newline="") as fout:
+        for w in weight:
+            fout.write(str(w) + "\n")
+
+
+train_par = load_dataset("training.csv")
+test_par = load_dataset("testing.csv")
+
+# kind of pretrain, if there is a model.csv, then use it directly
+try:
+    weight = np.loadtxt("model.csv").astype(float).tolist()
+    if len(weight) != input_size + 1:
+        raise ValueError("model length mismatch")
+except Exception:
+    weight = [1.0 for _ in range(input_size + 1)]
+
+
+# start training and collect testing MSE by epoch
+mse_history = []
 for k in range(epoch):
-    for i in range(len(par)):
-        output = sum(weight[j]*par[i][j] for j in range(input_size)) + weight[input_size]
-        err = par[i][input_size] - output
-        
+    for row in train_par:
+        output = sum(weight[j] * row[j] for j in range(input_size)) + weight[input_size]
+        err = row[input_size] - output
+
         # cal gradient = err*parameter, then, change weight
-        gradient = []
         for j in range(input_size):
-            gradient.append(err*par[i][j])
-            weight[j] = weight[j] + gradient[j]*lr
-        weight[input_size] = weight[input_size] + err*lr
+            gradient = err * row[j]
+            weight[j] = weight[j] + gradient * lr
+        weight[input_size] = weight[input_size] + err * lr
+
+    mse = evaluate(weight, test_par)
+    mse_history.append(mse)
+    print(f"epoch: {k}, testing MSE: {mse:.6f}")
 
 
-# evaluate model
-total_err = 0
-for i in range(len(par)):
-	output = sum(weight[j]*par[i][j] for j in range(input_size)) + weight[input_size]
-	err = par[i][input_size] - output
-	total_err += err**2
-print("MSE:" + str(total_err/len(par)) + "\n")
+save_model(weight)
+
+# draw and save mse curve
+plt.figure(figsize=(10, 5))
+plt.plot(range(1, epoch + 1), mse_history, color="tab:blue", linewidth=1.5)
+plt.title("MSE Curve by Epoch")
+plt.xlabel("Epoch")
+plt.ylabel("Testing MSE")
+plt.grid(True, alpha=0.3)
+plt.tight_layout()
+plt.savefig("mse_curve.png", dpi=150)
+print("MSE curve saved to mse_curve.png")
